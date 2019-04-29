@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -49,7 +51,7 @@ func (h *mermaidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// calculate file path and graph width height
 	basepath := path.Join(h.root, base)
-	markdown := basepath + ".md"
+	mermaid := basepath + ".mmd"
 	var graph string
 	if width == "" {
 		graph = basepath + ext
@@ -58,10 +60,10 @@ func (h *mermaidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		graph = basepath + "." + width + "x" + height + ext
 	}
 
-	if mdStat, _ := os.Stat(markdown); mdStat != nil {
+	if mdStat, _ := os.Stat(mermaid); mdStat != nil {
 		graphStat, err := os.Stat(graph)
 		if os.IsNotExist(err) || graphStat != nil && graphStat.ModTime().Before(mdStat.ModTime()) {
-			if err := makeGraph(graph, markdown, width, height); err != nil {
+			if err := makeGraph(graph, mermaid, width, height); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -89,8 +91,11 @@ func parseGraphURL(url string) (base, width, height, ext string) {
 }
 
 func makeGraph(dest, src, width, height string) error {
+	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	defer cancel()
+
 	args := append(mermaidArgs, "-w", width, "-H", height, "-i", src, "-o", dest)
-	cmd := exec.Command(mermaidExec, args...)
+	cmd := exec.CommandContext(ctx, mermaidExec, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	err := cmd.Run()
 	return err
