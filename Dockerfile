@@ -7,9 +7,9 @@ COPY . .
 RUN go build
 
 FROM buildkite/puppeteer
-COPY --from=builder /mermaid/mermaid-server /usr/bin/
 RUN npm install mermaid.cli
 ENV PATH=$PATH:/node_modules/.bin
 RUN echo '{"args": ["--no-sandbox"]}' > /puppeteer.json
+COPY --from=builder /mermaid/mermaid-server /usr/bin/
 WORKDIR /data
 CMD mermaid-server -exec='mmdc -p /puppeteer.json' -width=980 -height=1080 -port=8100 -httpRoot=/mermaid/ -fileRoot=./
