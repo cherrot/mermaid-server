@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -51,6 +52,7 @@ func (h *mermaidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// calculate file path and graph width height
 	basepath := path.Join(h.root, base)
+	markdown := basepath + ".md"
 	mermaid := basepath + ".mmd"
 	var graph string
 	if width == "" {
@@ -60,9 +62,13 @@ func (h *mermaidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		graph = basepath + "." + width + "x" + height + ext
 	}
 
-	if mdStat, _ := os.Stat(mermaid); mdStat != nil {
+	if mdStat, _ := os.Stat(markdown); mdStat != nil {
 		graphStat, err := os.Stat(graph)
 		if os.IsNotExist(err) || graphStat != nil && graphStat.ModTime().Before(mdStat.ModTime()) {
+			if err := grepMermaid(mermaid, markdown); err != nil {
+				logrus.Error(err.Error())
+				mermaid = markdown
+			}
 			if err := makeGraph(graph, mermaid, width, height); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -90,8 +96,27 @@ func parseGraphURL(url string) (base, width, height, ext string) {
 	return
 }
 
+func grepMermaid(dest, src string) error {
+	var buf bytes.Buffer
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("sed -n '/^```\\s*mermaid/,/^```/ p' %s | sed '/^```/ d'", src))
+	cmd.Stdout, cmd.Stderr = &buf, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if buf.Len() == 0 {
+		return fmt.Errorf("no mermaid code block found in %s", src)
+	}
+
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(buf.Bytes())
+	return err
+}
+
 func makeGraph(dest, src, width, height string) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
 	args := append(mermaidArgs, "-w", width, "-H", height, "-i", src, "-o", dest)
