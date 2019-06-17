@@ -63,8 +63,15 @@ func (h *mermaidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mdStat, _ := os.Stat(markdown); mdStat != nil {
+		now := time.Now()
+		_, tzShiftSeconds := now.Zone()
+		zeroOfToday := now.Truncate(time.Hour * 24).Add(-time.Second * time.Duration(tzShiftSeconds))
+
 		graphStat, err := os.Stat(graph)
-		if os.IsNotExist(err) || graphStat != nil && graphStat.ModTime().Before(mdStat.ModTime()) {
+		if os.IsNotExist(err) ||
+			graphStat != nil && graphStat.ModTime().Before(zeroOfToday) ||
+			graphStat != nil && graphStat.ModTime().Before(mdStat.ModTime()) {
+
 			if err := grepMermaid(mermaid, markdown); err != nil {
 				logrus.Error(err.Error())
 				mermaid = markdown
